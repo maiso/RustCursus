@@ -7,34 +7,30 @@ enum MyCommand{
 	Push{
 		item: String,
 	},
-	Pop
+	Pop,
+	InvalidCommand {reason: String,},
+	InvalidParameter{reason: String,},
 }
 
-enum MyError{
-	//Io(std::io::Error),
-	Parse {
-		reason: String,
-	},
+fn parse_command(input : & String) -> Result<MyCommand,()> {
+	let mut split = input.split(" ");
+	let command = split.next().unwrap_or("none");
+
+    println!("Command: {:?}", command);
+    match command {
+    	"push"  => {
+    		let push_items = split.next().unwrap_or("none");
+    		if push_items != "none"{
+    			Ok(MyCommand::Push{item: push_items.to_string()})
+    		}else{
+    			Ok(MyCommand::InvalidParameter{ reason: format!("Nothing to push")})
+    		}},
+		"pop"  => Ok(MyCommand::Pop),
+		&_     => Ok(MyCommand::InvalidCommand { reason: format!("Unknown Command : {:?}",command)}),
+    }
 }
 
-fn parse_command(input : & String) -> Result<MyCommand,MyError> {
-	let split = input.split(" ");
-	let vec: Vec<&str> = split.collect();
-
-	if vec.len() > 0 {
-	    println!("{:?}", vec[0]);
-	    match vec[0] {
-	    	"push" => Ok(MyCommand::Push{item: vec[1].to_string()}),
-			"pop" =>  Ok(MyCommand::Pop),
-			&_ => Err(MyError::Parse{ reason: format!("Invalid command {:?}",vec[0])})
-	    }
-	  	
-	}else{
-		Err(MyError::Parse{ reason:"No command provided".into()})
-	}
-}
-
-fn read_cmd(stream : &mut TcpStream) -> String
+fn read_cmd(stream : &mut TcpStream) -> Result<String,std::io::Error>
 {
  	let mut f = BufReader::new(stream);
 
@@ -44,7 +40,7 @@ fn read_cmd(stream : &mut TcpStream) -> String
 	println!("Read: {:?}", buf);
 	buf.truncate(buf.len() - 2); //Remove the \r\n
 
-    buf
+    Ok(buf)
 }
 
 fn write_cmd( stream : &mut TcpStream, line : String) -> std::io::Result<()> {
@@ -54,35 +50,36 @@ fn write_cmd( stream : &mut TcpStream, line : String) -> std::io::Result<()> {
 	Ok(())
 }
 
+fn handle_received_command(my_command : &MyCommand, stack: &mut Vec<String>) -> String{
+	match my_command {
+		MyCommand::Pop => {
+			println!("Pop");
+			let popped = stack.pop().unwrap_or_else(||{"Nothing to pop".into()});
+			return format!("Popped: {}", popped);
+		},
+		MyCommand::Push{item : x} => {
+			println!("Push {}",x);
+	    	stack.push(x.to_string());
+	    	return "Pushed to stack".into();
+		},
+		MyCommand::InvalidCommand{reason : x} => {
+	    	return "InvalidCommand: ".into();
+		},	
+		MyCommand::InvalidParameter{reason : x} => {
+	    	return "InvalidParameter: ".into();
+		},		
+	}	
+}
 fn handle_client(mut stream: TcpStream, stack: &mut Vec<String>) -> std::io::Result<()>  {
-	let line : String = read_cmd(&mut stream);  
+	let line : String = read_cmd(&mut stream)?;  
 	let mut ret_val : String = "retval".into();
+
 	match parse_command(&line){
-        Ok(my_command) => {
-			match my_command {
-				MyCommand::Pop => {
-					println!("Pop");
-					let popped = stack.pop().unwrap_or_else(||{"Nothing to pop".into()});
-					ret_val = format!("Popped: {}", popped);
-				},
-				MyCommand::Push{item : x} => {
-					println!("Push {}",x);
-			    	stack.push(x);
-			    	ret_val = "Pushed to stack".into();
-				},
-			}
-        	
-        },
-        Err(err) => {
-        	match err {
-        		MyError::Parse{ reason: x} => println!("Error reason: {}", x),
-        		//MyError::io => println!("Error reason: io"),
-        	}
-        }
-        ,
+        Ok(my_command) => { ret_val = handle_received_command(&my_command,stack); },
+        Err(_) => {},
     }
 
-	write_cmd(&mut stream,ret_val);
+	write_cmd(&mut stream,ret_val)?;
 
    	Ok(())
 }
@@ -96,3 +93,17 @@ fn main() -> std::io::Result<()>{
 	}
 	Ok(())
 }
+
+#[cfg(test)]
+mod tests{
+	use proptest::*;
+	use super::*;
+
+	proptest!{
+		#[test]
+		fn doesnt_crash(ref input in "(push){0,3}(pop){0,3}.*"){
+			let _ = parse_command(input);
+		}
+	}
+}
+
