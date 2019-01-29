@@ -14,31 +14,30 @@ enum Error{
 	Parse {
 		reason: String,
 	},
-
 }
 
-fn parseCommand(input : & String, mut stack: &mut Vec<String>) -> String
+fn parse_command(input : & String, stack: &mut Vec<String>) -> String
 {
-	let mut split = input.split(" ");
+	let split = input.split(" ");
 	let vec: Vec<&str> = split.collect();
-	let mut retVal : String = "Failed to parse command".into();
+	let mut ret_val : String = "Failed to parse command".into();
 	if vec.len() > 0 {
 	    println!("{:?}", vec[0]);
 	    match vec[0] {
 	    	"push" => {
 				    	stack.push(vec[1].to_string());
-				    	retVal = "Pushed to stack".into();
+				    	ret_val = "Pushed to stack".into();
 				    	},
 			"pop" => {
 				let popped = stack.pop().unwrap_or_else(||{"Nothing to pop".into()});
-				retVal = format!("Popped: {}", popped);
+				ret_val = format!("Popped: {}", popped);
 			},
 			&_ => {
-				retVal = "Panic".into();
+				ret_val = "Invalid command".into();
 			},
 	    }
 	}
-	retVal
+	ret_val //return value
 }
 
 fn read_cmd(stream : &mut TcpStream) -> String
@@ -56,15 +55,15 @@ fn read_cmd(stream : &mut TcpStream) -> String
 
 fn write_cmd( stream : &mut TcpStream, line : String) -> std::io::Result<()> {
 	println!("Write {:?}",line);
-	let vecOfBytes = &line.into_bytes();
-	stream.write(vecOfBytes)?;
+	let vec_of_bytes = &line.into_bytes();
+	stream.write(vec_of_bytes)?;
 	Ok(())
 }
 
 fn handle_client(mut stream: TcpStream, mut stack: &mut Vec<String>) -> std::io::Result<()>  {
 	let line : String = read_cmd(&mut stream);  
-	let retVal : String = parseCommand(&line, &mut stack);
-	write_cmd(&mut stream,retVal);
+	let ret_val : String = parse_command(&line, &mut stack);
+	write_cmd(&mut stream,ret_val);
 
    	Ok(())
 }
