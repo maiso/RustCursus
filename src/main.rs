@@ -1,43 +1,37 @@
 use std::io::prelude::*;
-use std::io::{Result, Read, Write };
+use std::io::{Read, Write };
 use std::net::{TcpListener, TcpStream};
 use std::io::{self, BufReader};
 
-enum Command{
+enum MyCommand{
 	Push{
-		itesm: Vec<String>,
-	}
+		item: String,
+	},
+	Pop
 }
 
-enum Error{
-	Io(std::io::Error),
+enum MyError{
+	//Io(std::io::Error),
 	Parse {
 		reason: String,
 	},
 }
 
-fn parse_command(input : & String, stack: &mut Vec<String>) -> String
-{
+fn parse_command(input : & String) -> Result<MyCommand,MyError> {
 	let split = input.split(" ");
 	let vec: Vec<&str> = split.collect();
-	let mut ret_val : String = "Failed to parse command".into();
+
 	if vec.len() > 0 {
 	    println!("{:?}", vec[0]);
 	    match vec[0] {
-	    	"push" => {
-				    	stack.push(vec[1].to_string());
-				    	ret_val = "Pushed to stack".into();
-				    	},
-			"pop" => {
-				let popped = stack.pop().unwrap_or_else(||{"Nothing to pop".into()});
-				ret_val = format!("Popped: {}", popped);
-			},
-			&_ => {
-				ret_val = "Invalid command".into();
-			},
+	    	"push" => Ok(MyCommand::Push{item: vec[1].to_string()}),
+			"pop" =>  Ok(MyCommand::Pop),
+			&_ => Err(MyError::Parse{ reason: format!("Invalid command {:?}",vec[0])})
 	    }
+	  	
+	}else{
+		Err(MyError::Parse{ reason:"No command provided".into()})
 	}
-	ret_val //return value
 }
 
 fn read_cmd(stream : &mut TcpStream) -> String
@@ -60,9 +54,34 @@ fn write_cmd( stream : &mut TcpStream, line : String) -> std::io::Result<()> {
 	Ok(())
 }
 
-fn handle_client(mut stream: TcpStream, mut stack: &mut Vec<String>) -> std::io::Result<()>  {
+fn handle_client(mut stream: TcpStream, stack: &mut Vec<String>) -> std::io::Result<()>  {
 	let line : String = read_cmd(&mut stream);  
-	let ret_val : String = parse_command(&line, &mut stack);
+	let mut ret_val : String = "retval".into();
+	match parse_command(&line){
+        Ok(my_command) => {
+			match my_command {
+				MyCommand::Pop => {
+					println!("Pop");
+					let popped = stack.pop().unwrap_or_else(||{"Nothing to pop".into()});
+					ret_val = format!("Popped: {}", popped);
+				},
+				MyCommand::Push{item : x} => {
+					println!("Push {}",x);
+			    	stack.push(x);
+			    	ret_val = "Pushed to stack".into();
+				},
+			}
+        	
+        },
+        Err(err) => {
+        	match err {
+        		MyError::Parse{ reason: x} => println!("Error reason: {}", x),
+        		//MyError::io => println!("Error reason: io"),
+        	}
+        }
+        ,
+    }
+
 	write_cmd(&mut stream,ret_val);
 
    	Ok(())
